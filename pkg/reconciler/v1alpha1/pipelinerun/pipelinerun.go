@@ -174,12 +174,13 @@ func (c *Reconciler) Reconcile(ctx context.Context, key string) error {
 	// Reconcile this copy of the task run and then write back any status or label
 	// updates regardless of whether the reconciliation errored out.
 	err = c.reconcile(ctx, pr)
+	updatedPr := pr
 	if equality.Semantic.DeepEqual(original.Status, pr.Status) {
 		// If we didn't change anything then don't call updateStatus.
 		// This is important because the copy we loaded from the informer's
 		// cache may be stale and we don't want to overwrite a prior update
 		// to status with this stale state.
-	} else if _, err := c.updateStatus(pr); err != nil {
+	} else if updatedPr, err = c.updateStatus(pr); err != nil {
 		c.Logger.Warn("Failed to update PipelineRun status", zap.Error(err))
 		c.Recorder.Event(pr, corev1.EventTypeWarning, eventReasonFailed, "PipelineRun failed to update")
 		return err
@@ -187,7 +188,10 @@ func (c *Reconciler) Reconcile(ctx context.Context, key string) error {
 	// Since we are using the status subresource, it is not possible to update
 	// the status and labels simultaneously.
 	if !reflect.DeepEqual(original.ObjectMeta.Labels, pr.ObjectMeta.Labels) {
-		if _, err := c.updateLabels(pr); err != nil {
+		// We use the PipelineRun returned by c.updateStatus to make sure we can
+		// update labels if the status was just updated.
+		updatedPr.ObjectMeta.Labels = pr.ObjectMeta.Labels
+		if _, err := c.updateLabels(updatedPr); err != nil {
 			c.Logger.Warn("Failed to update PipelineRun labels", zap.Error(err))
 			c.Recorder.Event(pr, corev1.EventTypeWarning, eventReasonFailed, "PipelineRun failed to update labels")
 			return err

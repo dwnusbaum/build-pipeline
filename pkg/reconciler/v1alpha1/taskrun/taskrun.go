@@ -175,19 +175,23 @@ func (c *Reconciler) Reconcile(ctx context.Context, key string) error {
 		c.Logger.Errorf("Reconcile error: %v", err.Error())
 		return err
 	}
+	updatedTr := tr
 	if equality.Semantic.DeepEqual(original.Status, tr.Status) {
 		// If we didn't change anything then don't call updateStatus.
 		// This is important because the copy we loaded from the informer's
 		// cache may be stale and we don't want to overwrite a prior update
 		// to status with this stale state.
-	} else if _, err := c.updateStatus(tr); err != nil {
+	} else if updatedTr, err = c.updateStatus(tr); err != nil {
 		c.Logger.Warn("Failed to update taskRun status", zap.Error(err))
 		return err
 	}
 	// Since we are using the status subresource, it is not possible to update
 	// the status and labels simultaneously.
 	if !reflect.DeepEqual(original.ObjectMeta.Labels, tr.ObjectMeta.Labels) {
-		if _, err := c.updateLabels(tr); err != nil {
+		// We use the TaskRun returned by c.updateStatus to make sure we can
+		// update labels if the status was just updated.
+		updatedTr.ObjectMeta.Labels = tr.ObjectMeta.Labels
+		if _, err := c.updateLabels(updatedTr); err != nil {
 			c.Logger.Warn("Failed to update TaskRun labels", zap.Error(err))
 			return err
 		}
